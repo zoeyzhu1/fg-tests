@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Function Generator / Oscilloscope</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<style>
+:root {
+  --bg:   #111214; --bg2: #18191d; --bg3: #1e2025;
+  --border: rgba(255,255,255,0.08); --border2: rgba(255,255,255,0.14);
+  --text: #e8e9ec; --muted: #7a7d86;
+  --accent: #3a8ef6; --accent-dim: rgba(58,142,246,0.15);
+  --success: #2eb87a; --success-dim: rgba(46,184,122,0.12);
+  --warn: #e8a44a; --danger: #e05252;
+  --mono: 'Courier New', monospace; --r: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: system-ui,-apple-system,sans-serif; font-size: 14px; line-height: 1.6; min-height: 100vh; }
+
+header {
+  border-bottom: 1px solid var(--border); padding: 14px 24px;
+  display: flex; align-items: center; gap: 12px; background: var(--bg2);
+}
+header .logo {
+  width: 28px; height: 28px; background: var(--accent); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; font-size: 15px; color: #fff;
+}
+header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+header .sub { font-size: 12px; color: var(--muted); }
+.status-dot { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
+.status-dot.live { background: var(--success); box-shadow: 0 0 0 3px var(--success-dim); }
+.status-dot.err  { background: var(--danger); }
+
+.layout { display: grid; grid-template-columns: 260px 1fr; height: calc(100vh - 57px); }
+
+aside {
+  background: var(--bg2); border-right: 1px solid var(--border);
+  padding: 18px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px;
+}
+.section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+
+.channel-btn {
+  width: 100%; text-align: left; padding: 9px 11px; border-radius: var(--r);
+  border: 1px solid var(--border); background: transparent; color: var(--text);
+  cursor: pointer; display: flex; align-items: center; gap: 9px;
+  transition: background 0.15s, border-color 0.15s; font-size: 13px;
+}
+.channel-btn:hover { background: var(--bg3); border-color: var(--border2); }
+.channel-btn.active { background: var(--accent-dim); border-color: var(--accent); }
+.channel-btn .ch-badge { font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 4px; background: var(--bg3); color: var(--muted); font-family: var(--mono); }
+.channel-btn.active .ch-badge { background: rgba(58,142,246,0.25); color: var(--accent); }
+.channel-btn .ch-type { font-size: 11px; color: var(--muted); margin-left: auto; font-family: var(--mono); }
+
+.field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; font-weight: 500; }
+.field input, .field select {
+  width: 100%; padding: 6px 9px; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: var(--r);
+  color: var(--text); font-family: var(--mono); font-size: 13px; outline: none;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); }
+
+main { overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+.card-title { font-size: 11px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+
+/* oscilloscope */
+.scope-wrap { position: relative; }
+canvas#scope { width: 100%; height: 180px; display: block; border-radius: var(--r); background: #0a0c0e; border: 1px solid var(--border); }
+.scope-overlay {
+  position: absolute; top: 8px; right: 10px;
+  display: flex; gap: 10px; align-items: center;
+}
+.scope-stat { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.scope-stat span { color: var(--accent); }
+
+/* metrics row */
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.metric { background: var(--bg3); border-radius: var(--r); padding: 10px 12px; }
+.metric .m-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+.metric .m-val { font-size: 18px; font-weight: 700; font-family: var(--mono); }
+.metric .m-unit { font-size: 11px; color: var(--muted); }
+
+/* waveform selector */
+.wave-row { display: flex; gap: 6px; margin-bottom: 12px; }
+.wave-btn {
+  flex: 1; padding: 7px 0; border-radius: var(--r);
+  border: 1px solid var(--border); background: transparent;
+  color: var(--muted); cursor: pointer; font-size: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  transition: all 0.15s;
+}
+.wave-btn:hover { border-color: var(--border2); color: var(--text); }
+.wave-btn.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.wave-btn svg { width: 32px; height: 16px; }
+
+/* param grid */
+.param-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.param-field label { font-size: 10px; color: var(--muted); display: block; margin-bottom: 3px; }
+.param-field input[type=number] {
+  width: 100%; padding: 6px 8px; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: var(--r);
+  color: var(--text); font-family: var(--mono); font-size: 13px; outline: none;
+}
+.param-field input:focus { border-color: var(--accent); }
+
+/* buttons */
+.btn {
+  padding: 8px 16px; border-radius: var(--r); border: none; cursor: pointer;
+  font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-stop    { background: var(--danger); color: #fff; }
+.btn-secondary { background: transparent; border: 1px solid var(--border2); color: var(--text); }
+
+/* sweep */
+.sweep-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; margin-top: 10px; }
+.sweep-cell { background: var(--bg3); border-radius: var(--r); padding: 9px 7px; text-align: center; border: 1px solid var(--border); transition: border-color 0.2s, background 0.2s; }
+.sweep-cell.done   { border-color: var(--success); background: var(--success-dim); }
+.sweep-cell.active { border-color: var(--accent);  background: var(--accent-dim); }
+.sweep-cell .sc-code { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.sweep-cell .sc-val  { font-family: var(--mono); font-size: 12px; font-weight: 700; }
+.sweep-cell.done .sc-val  { color: var(--success); }
+.sweep-cell.active .sc-val { color: var(--accent); }
+
+/* log */
+.log-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+.log-table th { text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 0 10px 7px 0; border-bottom: 1px solid var(--border); }
+.log-table td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--border); color: var(--text); }
+.log-table tr:last-child td { border-bottom: none; }
+.tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+.tag-dac { background: var(--accent-dim); color: var(--accent); }
+.tag-adc { background: var(--success-dim); color: var(--success); }
+.tag-gen { background: rgba(232,164,74,0.12); color: var(--warn); }
+.tag-err { background: rgba(224,82,82,0.12); color: var(--danger); }
+.delta-ok { color: var(--success); } .delta-warn { color: var(--warn); } .delta-bad { color: var(--danger); }
+
+.empty-state { text-align: center; padding: 28px; color: var(--muted); font-size: 13px; }
+.empty-state i { font-size: 28px; display: block; margin-bottom: 6px; opacity: 0.4; }
+.spinner { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.adc-select { padding: 6px 9px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); font-family: var(--mono); font-size: 13px; outline: none; }
+.adc-select:focus { border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo" aria-hidden="true"><i class="ti ti-wave-sine"></i></div>
+  <h1>Function Generator</h1>
+  <span class="sub">/ Oscilloscope</span>
+  <div class="status-dot" id="statusDot"></div>
+</header>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside>
+    <div>
+      <div class="section-label">Server</div>
+      <div class="field" style="margin-bottom:8px">
+        <label>Base URL</label>
+        <input type="text" id="serverUrl" value="http://localhost:5000">
+      </div>
+      <button class="btn btn-secondary" style="width:100%;justify-content:center" onclick="pingServer()">
+        <i class="ti ti-plug" aria-hidden="true"></i> Connect
+      </button>
+    </div>
+
+    <div>
+      <div class="section-label">Output channel</div>
+      <div id="channelList" style="display:flex;flex-direction:column;gap:5px"></div>
+    </div>
+
+    <div>
+      <div class="section-label">ADC input</div>
+      <select id="adcSelect" class="adc-select" style="width:100%">
+        <option value="IN1">IN1 — 0xC3</option>
+        <option value="IN2" selected>IN2 — 0xD3</option>
+        <option value="IN3">IN3 — 0xF3</option>
+        <option value="IN4">IN4 — 0xE3</option>
+      </select>
+    </div>
+
+    <div>
+      <div class="section-label">Scope</div>
+      <div class="field" style="margin-bottom:8px">
+        <label>Sample interval (ms)</label>
+        <input type="number" id="sampleInterval" value="250" min="50" max="2000" step="50">
+      </div>
+      <div class="field">
+        <label>Buffer size</label>
+        <input type="number" id="bufferSize" value="120" min="20" max="300" step="10">
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main>
+
+    <!-- Oscilloscope -->
+    <div class="card">
+      <div class="card-title" style="justify-content:space-between">
+        <span><i class="ti ti-chart-line" aria-hidden="true"></i> Oscilloscope — <span id="scopeAdcLabel" style="color:var(--accent)">IN2</span></span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="clearScope()">
+            <i class="ti ti-trash" aria-hidden="true"></i> Clear
+          </button>
+          <button class="btn btn-secondary" id="scopeToggleBtn" style="padding:4px 10px;font-size:11px" onclick="toggleScope()">
+            <i class="ti ti-player-play" aria-hidden="true"></i> Start
+          </button>
+        </div>
+      </div>
+      <div class="scope-wrap">
+        <canvas id="scope"></canvas>
+        <div class="scope-overlay">
+          <span class="scope-stat">min <span id="scopeMin">—</span>V</span>
+          <span class="scope-stat">max <span id="scopeMax">—</span>V</span>
+          <span class="scope-stat">last <span id="scopeLast">—</span>V</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live metrics -->
+    <div class="metrics">
+      <div class="metric">
+        <div class="m-label">Waveform</div>
+        <div class="m-val" id="mWave" style="font-size:14px;margin-top:2px">—</div>
+      </div>
+      <div class="metric">
+        <div class="m-label">Frequency</div>
+        <div class="m-val" id="mFreq">—<span class="m-unit"> Hz</span></div>
+      </div>
+      <div class="metric">
+        <div class="m-label">Amplitude</div>
+        <div class="m-val" id="mAmp">—<span class="m-unit"> V</span></div>
+      </div>
+      <div class="metric">
+        <div class="m-label">ADC last</div>
+        <div class="m-val" id="mAdcV">—<span class="m-unit"> V</span></div>
+      </div>
+    </div>
+
+    <!-- Function generator -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-adjustments" aria-hidden="true"></i> Function generator</div>
+
+      <!-- Waveform -->
+      <div class="wave-row">
+        <button class="wave-btn active" data-wave="sine" onclick="selectWave('sine')">
+          <svg viewBox="0 0 32 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M0 8 C4 0, 8 0, 12 8 S20 16, 24 8 S28 0, 32 8"/>
+          </svg>
+          sine
+        </button>
+        <button class="wave-btn" data-wave="square" onclick="selectWave('square')">
+          <svg viewBox="0 0 32 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="0,8 0,2 8,2 8,14 16,14 16,2 24,2 24,14 32,14 32,8"/>
+          </svg>
+          square
+        </button>
+        <button class="wave-btn" data-wave="sawtooth" onclick="selectWave('sawtooth')">
+          <svg viewBox="0 0 32 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="0,14 8,2 8,14 16,2 16,14 24,2 24,14 32,2"/>
+          </svg>
+          saw
+        </button>
+        <button class="wave-btn" data-wave="triangle" onclick="selectWave('triangle')">
+          <svg viewBox="0 0 32 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="0,8 4,2 12,14 20,2 28,14 32,8"/>
+          </svg>
+          triangle
+        </button>
+      </div>
+
+      <!-- Params -->
+      <div class="param-grid">
+        <div class="param-field">
+          <label>Frequency (Hz)</label>
+          <input type="number" id="pFreq" value="1" min="0.1" max="50" step="0.1">
+        </div>
+        <div class="param-field">
+          <label>Amplitude (V)</label>
+          <input type="number" id="pAmp" value="1.5" min="0" max="1.65" step="0.05">
+        </div>
+        <div class="param-field">
+          <label>Offset (V)</label>
+          <input type="number" id="pOffset" value="1.65" min="0" max="3.3" step="0.05">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" id="genBtn" onclick="startGen()">
+          <i class="ti ti-player-play" aria-hidden="true"></i> Run
+        </button>
+        <button class="btn btn-stop" id="stopBtn" onclick="stopGen()" disabled>
+          <i class="ti ti-player-stop" aria-hidden="true"></i> Stop
+        </button>
+        <button class="btn btn-secondary" onclick="writeAndRead()" style="margin-left:auto">
+          <i class="ti ti-refresh" aria-hidden="true"></i> Single shot
+        </button>
+      </div>
+    </div>
+
+    <!-- Sweep -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-stairs" aria-hidden="true"></i> Step sweep</div>
+      <button class="btn btn-secondary" id="sweepBtn" onclick="runSweep()">
+        <i class="ti ti-player-play" aria-hidden="true"></i> Run sweep
+      </button>
+      <div class="sweep-grid" id="sweepGrid" style="display:none"></div>
+    </div>
+
+    <!-- Log -->
+    <div class="card">
+      <div class="card-title" style="justify-content:space-between">
+        <span><i class="ti ti-list" aria-hidden="true"></i> Log</span>
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="clearLog()">Clear</button>
+      </div>
+      <div id="logWrap">
+        <div class="empty-state">
+          <i class="ti ti-inbox" aria-hidden="true"></i>
+          No operations yet.
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const BASE = () => document.getElementById('serverUrl').value.replace(/\/+$/, '');
+
+// Auto-set URL to wherever this page was served from
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('serverUrl');
+  if (window.location.hostname !== '' && window.location.hostname !== 'localhost') {
+    input.value = `${window.location.protocol}//${window.location.hostname}:${window.location.port || 5000}`;
+  }
+});
+
+// State 
+let currentCh  = { id: 'OUT1', type: 'dac5571', max: 255, addr: '0x4D', defaultAdc: 'IN2' };
+let selectedWave = 'sine';
+let genRunning   = false;
+let scopeRunning = false;
+let scopeTimer   = null;
+let scopeBuffer  = [];
+let logEntries   = [];
+
+const STATIC_CHANNELS = [
+  { id: 'OUT1', type: 'dac5571', max: 255,  addr: '0x4D', defaultAdc: 'IN2' },
+  { id: 'OUT2', type: 'dac5571', max: 255,  addr: '0x4C', defaultAdc: 'IN2' },
+  { id: 'OUT3', type: 'mcp4725', max: 4095, addr: '0x61', defaultAdc: 'IN3' },
+  { id: 'OUT4', type: 'mcp4725', max: 4095, addr: '0x60', defaultAdc: 'IN1' },
+];
+
+// Channel list 
+function buildChannelList() {
+  const list = document.getElementById('channelList');
+  list.innerHTML = '';
+  STATIC_CHANNELS.forEach(ch => {
+    const btn = document.createElement('button');
+    btn.className = 'channel-btn' + (ch.id === currentCh.id ? ' active' : '');
+    btn.innerHTML = `<span class="ch-badge">${ch.id}</span><span>${ch.type.toUpperCase()}</span><span class="ch-type">${ch.addr}</span>`;
+    btn.onclick = () => {
+      currentCh = ch;
+      document.querySelectorAll('.channel-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.getElementById('adcSelect').value = ch.defaultAdc || 'IN1';
+      updateScopeLabel();
+    };
+    list.appendChild(btn);
+  });
+}
+
+function updateScopeLabel() {
+  document.getElementById('scopeAdcLabel').textContent = document.getElementById('adcSelect').value;
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('adcSelect').addEventListener('change', updateScopeLabel);
+});
+
+// Waveform selector 
+function selectWave(w) {
+  selectedWave = w;
+  document.querySelectorAll('.wave-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.wave === w));
+}
+
+// Server 
+async function pingServer() {
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot';
+  try {
+    const r = await fetch(`${BASE()}/api/channels`, { signal: AbortSignal.timeout(3000) });
+    if (r.ok) { dot.className = 'status-dot live'; addLog('sys', 'Connected to ' + BASE(), null); }
+    else throw new Error('HTTP ' + r.status);
+  } catch(e) { dot.className = 'status-dot err'; addLog('err', 'Connection failed: ' + e.message, null); }
+}
+
+// Generator 
+async function startGen() {
+  const freq   = parseFloat(document.getElementById('pFreq').value);
+  const amp    = parseFloat(document.getElementById('pAmp').value);
+  const offset = parseFloat(document.getElementById('pOffset').value);
+  const stepMs = Math.max(20, Math.round(1000 / freq / 20)); // ~20 steps/cycle
+
+  try {
+    const r = await fetch(`${BASE()}/api/generate`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ channel: currentCh.id, waveform: selectedWave,
+                             freq, amplitude: amp, offset, step_ms: stepMs })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      genRunning = true;
+      document.getElementById('genBtn').disabled  = true;
+      document.getElementById('stopBtn').disabled = false;
+      document.getElementById('mWave').textContent = selectedWave;
+      document.getElementById('mFreq').textContent = freq.toFixed(1);
+      document.getElementById('mAmp').textContent  = amp.toFixed(2);
+      addLog('gen', `${currentCh.id} ${selectedWave} ${freq}Hz ±${amp}V +${offset}V`, null);
+    } else { addLog('err', d.error, null); }
+  } catch(e) { addLog('err', e.message, null); }
+}
+
+async function stopGen() {
+  try {
+    await fetch(`${BASE()}/api/stop`, { method: 'POST' });
+  } catch(e) {}
+  genRunning = false;
+  document.getElementById('genBtn').disabled  = false;
+  document.getElementById('stopBtn').disabled = true;
+  addLog('gen', 'Generator stopped', null);
+}
+
+//Scope 
+const canvas  = document.getElementById('scope');
+const ctx     = canvas.getContext('2d');
+
+function resizeCanvas() {
+  canvas.width  = canvas.offsetWidth  * window.devicePixelRatio;
+  canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+}
+window.addEventListener('resize', () => { resizeCanvas(); drawScope(); });
+resizeCanvas();
+
+function drawScope() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth   = 1;
+  for (let y = 0; y <= 4; y++) {
+    const yy = (y / 4) * H;
+    ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(W, yy); ctx.stroke();
+  }
+  for (let x = 0; x <= 8; x++) {
+    const xx = (x / 8) * W;
+    ctx.beginPath(); ctx.moveTo(xx, 0); ctx.lineTo(xx, H); ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath();
+  const zeroY = H * (1 - 2.048 / 4.096);
+  ctx.moveTo(0, zeroY); ctx.lineTo(W, zeroY); ctx.stroke();
+
+  if (scopeBuffer.length < 2) return;
+
+  const buf = parseInt(document.getElementById('bufferSize').value) || 120;
+  const pts = scopeBuffer.slice(-buf);
+
+  // waveform
+  ctx.strokeStyle = '#3a8ef6';
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  pts.forEach((v, i) => {
+    const x = (i / (pts.length - 1)) * W;
+    const y = H * (1 - Math.max(0, Math.min(4.096, v)) / 4.096);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // last point dot
+  const last = pts[pts.length - 1];
+  const lx   = W, ly = H * (1 - Math.max(0, Math.min(4.096, last)) / 4.096);
+  ctx.beginPath();
+  ctx.arc(lx - 1, ly, 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#3a8ef6';
+  ctx.fill();
+
+  // stats
+  const mn = Math.min(...pts).toFixed(3);
+  const mx = Math.max(...pts).toFixed(3);
+  document.getElementById('scopeMin').textContent  = mn;
+  document.getElementById('scopeMax').textContent  = mx;
+  document.getElementById('scopeLast').textContent = last.toFixed(3);
+  document.getElementById('mAdcV').textContent = last.toFixed(3);
+}
+
+async function scopeTick() {
+  const adc = document.getElementById('adcSelect').value;
+  try {
+    const r = await fetch(`${BASE()}/api/read`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ adc })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      scopeBuffer.push(d.voltage);
+      const buf = parseInt(document.getElementById('bufferSize').value) || 120;
+      if (scopeBuffer.length > buf * 2) scopeBuffer = scopeBuffer.slice(-buf);
+      drawScope();
+    }
+  } catch(e) {}
+}
+
+function toggleScope() {
+  if (scopeRunning) {
+    scopeRunning = false;
+    clearInterval(scopeTimer);
+    scopeTimer = null;
+    document.getElementById('scopeToggleBtn').innerHTML =
+      '<i class="ti ti-player-play" aria-hidden="true"></i> Start';
+  } else {
+    scopeRunning = true;
+    const interval = parseInt(document.getElementById('sampleInterval').value) || 250;
+    scopeTimer = setInterval(scopeTick, interval);
+    document.getElementById('scopeToggleBtn').innerHTML =
+      '<i class="ti ti-player-pause" aria-hidden="true"></i> Pause';
+    scopeTick();
+  }
+}
+
+function clearScope() {
+  scopeBuffer = [];
+  drawScope();
+  document.getElementById('scopeMin').textContent  = '—';
+  document.getElementById('scopeMax').textContent  = '—';
+  document.getElementById('scopeLast').textContent = '—';
+}
+
+async function writeAndRead() {
+  const code = Math.round(currentCh.max / 2);
+  const adc  = document.getElementById('adcSelect').value;
+  try {
+    const wr = await fetch(`${BASE()}/api/write`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ channel: currentCh.id, code })
+    });
+    const wd = await wr.json();
+    await new Promise(r => setTimeout(r, 300));
+    const rr = await fetch(`${BASE()}/api/read`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ adc })
+    });
+    const rd = await rr.json();
+    if (wd.ok && rd.ok) {
+      const delta = Math.abs(wd.dac_voltage - rd.voltage);
+      addLog('pair', `${currentCh.id}→${adc}`, { dacV: wd.dac_voltage, adcV: rd.voltage, delta });
+      document.getElementById('mAdcV').textContent = rd.voltage.toFixed(3);
+    }
+  } catch(e) { addLog('err', e.message, null); }
+}
+
+async function runSweep() {
+  const adc   = document.getElementById('adcSelect').value;
+  const btn   = document.getElementById('sweepBtn');
+  const grid  = document.getElementById('sweepGrid');
+  const max   = currentCh.max;
+  const steps = [0, Math.round(max/4), Math.round(max/2), Math.round(3*max/4), max];
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Running…';
+  grid.style.display = 'grid';
+  grid.innerHTML = steps.map((c, i) =>
+    `<div class="sweep-cell" id="sc${i}"><div class="sc-code">${c}</div><div class="sc-val">—</div></div>`
+  ).join('');
+
+  for (let i = 0; i < steps.length; i++) {
+    const code = steps[i];
+    const cell = document.getElementById(`sc${i}`);
+    cell.className = 'sweep-cell active';
+    cell.querySelector('.sc-val').textContent = '…';
+    try {
+      await fetch(`${BASE()}/api/write`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ channel: currentCh.id, code })
+      });
+      await new Promise(r => setTimeout(r, 350));
+      const rr = await fetch(`${BASE()}/api/read`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ adc })
+      });
+      const rd = await rr.json();
+      if (rd.ok) {
+        cell.className = 'sweep-cell done';
+        cell.querySelector('.sc-val').textContent = rd.voltage.toFixed(3) + 'V';
+        const dacV = code / max * 3.3;
+        addLog('pair', `Sweep ${currentCh.id}[${code}]→${adc}`,
+               { dacV, adcV: rd.voltage, delta: Math.abs(dacV - rd.voltage) });
+      }
+    } catch(e) {
+      cell.querySelector('.sc-val').textContent = 'ERR';
+    }
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ti ti-player-play" aria-hidden="true"></i> Run sweep';
+}
+
+function addLog(type, label, data) {
+  const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+  logEntries.unshift({ type, label, data, ts });
+  if (logEntries.length > 100) logEntries.pop();
+  renderLog();
+}
+function clearLog() { logEntries = []; renderLog(); }
+function deltaClass(d) { return d < 0.05 ? 'delta-ok' : d < 0.15 ? 'delta-warn' : 'delta-bad'; }
+
+function renderLog() {
+  const wrap = document.getElementById('logWrap');
+  if (!logEntries.length) {
+    wrap.innerHTML = `<div class="empty-state"><i class="ti ti-inbox" aria-hidden="true"></i>No operations yet.</div>`;
+    return;
+  }
+  const rows = logEntries.map(e => {
+    let tag = '', detail = '';
+    if (e.type === 'gen')  { tag = `<span class="tag tag-gen">GEN</span>`; detail = e.label; }
+    else if (e.type === 'pair') {
+      const dc = deltaClass(e.data.delta);
+      tag    = `<span class="tag tag-dac">DAC</span> <span class="tag tag-adc">ADC</span>`;
+      detail = `${e.data.dacV.toFixed(3)}V → ${e.data.adcV.toFixed(3)}V <span class="${dc}">Δ${e.data.delta.toFixed(3)}V</span>`;
+    }
+    else if (e.type === 'err') { tag = `<span class="tag tag-err">ERR</span>`; detail = e.label; }
+    else { tag = `<span class="tag" style="background:var(--bg3);color:var(--muted)">SYS</span>`; detail = e.label; }
+    const chCol = (e.type !== 'err' && e.type !== 'sys') ? `<td style="color:var(--accent)">${e.label}</td>` : `<td style="color:var(--muted)">${e.label}</td>`;
+    return `<tr><td style="color:var(--muted);white-space:nowrap">${e.ts}</td><td>${tag}</td><td>${detail}</td></tr>`;
+  }).join('');
+  wrap.innerHTML = `<table class="log-table"><thead><tr><th>Time</th><th>Type</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// Init 
+buildChannelList();
+drawScope();
+</script>
+</body>
+</html>
