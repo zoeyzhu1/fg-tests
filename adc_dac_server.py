@@ -207,9 +207,7 @@ def gen_status():
 def sample_adc():
     """
     Take N fast ADC samples, return voltages + timestamps.
-    Body: { "adc": "IN1", "n": 50 }
-    Note: each sample takes ~200 ms (ADC conversion time).
-    For a faster burst, pass "fast": true to skip the poll loop (less accurate).
+    Sample takes ~200 ms (ADC conversion time).
     """
     body   = request.get_json(force=True)
     adc_id = body.get("adc", "IN1").upper()
